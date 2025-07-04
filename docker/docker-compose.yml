@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:latest
+    container_name: farmassist_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: MasterSecure_PaswdAX
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d/
+
+volumes:
+  postgres_data:

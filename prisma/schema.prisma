@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -6,4 +9,22 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// Market Price model for storing AGMARKNET data
+model MarketPrice {
+  id          String   @id @default(cuid())
+  commodity   String
+  variety     String
+  maxPrice    Float
+  minPrice    Float
+  date        String   // Date in YYYY-MM-DD format
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Composite unique index to prevent duplicates
+  @@unique([commodity, variety, date])
+  @@map("market_prices")
+}
+
+// Models will be added here as needed
 

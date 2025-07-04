@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { marketService } from "./services/market";
+import { schedulerService } from "./services/scheduler";
 
 dotenv.config();
 
@@ -12,12 +13,16 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  res.json({ message: "FarmAssist Backend is running" });
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    service: "FarmAssist Backend",
+  });
 });
 
 app.get("/api/market-prices", async (req, res) => {
   try {
-    const marketPrices = await marketService.getFormattedMarketPrices();
+    const marketPrices = await marketService.getLatestMarketPrices();
     res.json(marketPrices);
   } catch (error) {
     console.error("Error in market prices endpoint:", error);
@@ -29,11 +34,23 @@ app.get("/api/market-prices", async (req, res) => {
   }
 });
 
+// app.post("/api/market-prices/update", async (req, res) => {
+//   try {
+//     const result = await schedulerService.triggerUpdate();
+//     res.json(result);
+//   } catch (error) {
+//     console.error("Error in manual update endpoint:", error);
+//     res.status(500).json({
+//       success: false,
+//       error: "Internal server error",
+//       message: "Failed to update market prices",
+//     });
+//   }
+// });
+
 app.listen(PORT, () => {
-  console.log(`🚀 FarmAssist Backend is running on port ${PORT}`);
-  console.log(
-    `📈 Market prices API: http://localhost:${PORT}/api/market-prices`
-  );
+  console.log(`🚀 FarmAssist Backend is running on port http://localhost:${PORT}`);
+  schedulerService.init();
 });
 
 export default app;

@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { prisma } from "../lib/database";
 
 export interface MarketPrice {
   commodity: string;
@@ -15,6 +16,7 @@ export interface MarketPricesResponse {
   error?: string;
   lastUpdated: string;
   totalItems: number;
+  source: "database" | "api";
 }
 
 class MarketService {
@@ -22,12 +24,10 @@ class MarketService {
     "https://agmarknet.gov.in/agnew/namticker.aspx";
 
   /**
-   * Fetch market prices from AGMARKNET
+   * Fetch market prices from AGMARKNET and save to database
    */
-  async getMarketPrices(): Promise<MarketPricesResponse> {
+  async fetchAndSaveMarketPrices(): Promise<MarketPricesResponse> {
     try {
-      console.log("Fetching market prices from AGMARKNET...");
-
       const response = await axios.get(this.AGMARKNET_URL, {
         headers: {
           "User-Agent":
@@ -38,21 +38,180 @@ class MarketService {
 
       const marketPrices = this.parseMarketPricesHTML(response.data);
 
+      if (marketPrices.length > 0) {
+        await this.saveMarketPricesToDatabase(marketPrices);
+        console.log(`📈 Saved ${marketPrices.length} market prices to database`);
+      }
+
       return {
         success: true,
         data: marketPrices,
         lastUpdated: new Date().toISOString(),
         totalItems: marketPrices.length,
+        source: "api",
       };
     } catch (error) {
-      console.error("Error fetching market prices:", error);
-
+      console.error("❌ Failed to fetch market prices:", error);
       return {
         success: false,
         error:
           error instanceof Error ? error.message : "Unknown error occurred",
         lastUpdated: new Date().toISOString(),
         totalItems: 0,
+        source: "api",
+      };
+    }
+  }
+
+  /**
+   * Save market prices to database
+   */
+  private async saveMarketPricesToDatabase(marketPrices: MarketPrice[]) {
+    try {
+      for (const price of marketPrices) {
+        await prisma.marketPrice.upsert({
+          where: {
+            commodity_variety_date: {
+              commodity: price.commodity,
+              variety: price.variety,
+              date: price.date,
+            },
+          },
+          update: {
+            maxPrice: price.maxPrice,
+            minPrice: price.minPrice,
+            updatedAt: new Date(),
+          },
+          create: {
+            commodity: price.commodity,
+            variety: price.variety,
+            maxPrice: price.maxPrice,
+            minPrice: price.minPrice,
+            date: price.date,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("❌ Failed to save market prices to database:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get market prices from database
+   */
+  async getMarketPricesFromDatabase(): Promise<MarketPricesResponse> {
+    try {
+      const marketPrices = await prisma.marketPrice.findMany({
+        orderBy: [{ date: "desc" }, { commodity: "asc" }],
+        take: 100,
+      });
+
+      const formattedPrices: MarketPrice[] = marketPrices.map((price: any) => ({
+        commodity: price.commodity,
+        variety: price.variety,
+        maxPrice: price.maxPrice,
+        minPrice: price.minPrice,
+        date: price.date,
+      }));
+
+      const latestRecord = await prisma.marketPrice.findFirst({
+        orderBy: { updatedAt: "desc" },
+        select: { updatedAt: true },
+      });
+
+      return {
+        success: true,
+        data: formattedPrices,
+        lastUpdated:
+          latestRecord?.updatedAt.toISOString() || new Date().toISOString(),
+        totalItems: formattedPrices.length,
+        source: "database",
+      };
+    } catch (error) {
+      console.error("❌ Failed to fetch market prices from database:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Database error occurred",
+        lastUpdated: new Date().toISOString(),
+        totalItems: 0,
+        source: "database",
+      };
+    }
+  }
+
+  /**
+   * Get latest market prices for today
+   */
+  async getLatestMarketPrices(): Promise<MarketPricesResponse> {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      
+      const marketPrices = await prisma.marketPrice.findMany({
+        where: { date: today },
+        orderBy: { commodity: "asc" },
+      });
+
+      if (marketPrices.length === 0) {
+        const latestDate = await prisma.marketPrice.findFirst({
+          orderBy: { date: "desc" },
+          select: { date: true },
+        });
+
+        if (latestDate) {
+          const latestPrices = await prisma.marketPrice.findMany({
+            where: { date: latestDate.date },
+            orderBy: { commodity: "asc" },
+          });
+
+          const formattedPrices: MarketPrice[] = latestPrices.map(
+            (price: any) => ({
+              commodity: price.commodity,
+              variety: price.variety,
+              maxPrice: price.maxPrice,
+              minPrice: price.minPrice,
+              date: price.date,
+            })
+          );
+
+          return {
+            success: true,
+            data: formattedPrices,
+            lastUpdated:
+              latestPrices[0]?.updatedAt.toISOString() ||
+              new Date().toISOString(),
+            totalItems: formattedPrices.length,
+            source: "database",
+          };
+        }
+      }
+
+      const formattedPrices: MarketPrice[] = marketPrices.map((price: any) => ({
+        commodity: price.commodity,
+        variety: price.variety,
+        maxPrice: price.maxPrice,
+        minPrice: price.minPrice,
+        date: price.date,
+      }));
+
+      return {
+        success: true,
+        data: formattedPrices,
+        lastUpdated:
+          marketPrices[0]?.updatedAt.toISOString() || new Date().toISOString(),
+        totalItems: formattedPrices.length,
+        source: "database",
+      };
+    } catch (error) {
+      console.error("❌ Failed to fetch latest market prices:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Database error occurred",
+        lastUpdated: new Date().toISOString(),
+        totalItems: 0,
+        source: "database",
       };
     }
   }
@@ -95,11 +254,10 @@ class MarketService {
           });
         }
       } catch (error) {
-        console.warn(`Error parsing ticker item at index ${index}:`, error);
+        // Silent skip for parsing errors
       }
     });
 
-    console.log(`Successfully parsed ${marketPrices.length} market prices`);
     return marketPrices;
   }
 
@@ -117,7 +275,6 @@ class MarketService {
 
       return date.toISOString().split("T")[0];
     } catch (error) {
-      console.warn("Error parsing date:", dateText, error);
       return new Date().toISOString().split("T")[0];
     }
   }
@@ -132,26 +289,8 @@ class MarketService {
 
       return isNaN(price) ? 0 : price;
     } catch (error) {
-      console.warn("Error parsing price:", priceText, error);
       return 0;
     }
-  }
-
-  /**
-   * Get formatted market prices for API response
-   */
-  async getFormattedMarketPrices(): Promise<MarketPricesResponse> {
-    const result = await this.getMarketPrices();
-
-    if (result.success && result.data) {
-      result.data.sort((a, b) => a.commodity.localeCompare(b.commodity));
-
-      console.log(
-        `Market prices retrieved successfully: ${result.data.length} items`
-      );
-    }
-
-    return result;
   }
 }
 

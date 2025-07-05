@@ -1,5 +1,5 @@
 import * as cron from "node-cron";
-import { marketService } from "./market";
+import { marketService } from "../services/market";
 
 class SchedulerService {
   private isInitialized = false;

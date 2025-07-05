@@ -254,7 +254,7 @@ class MarketService {
           });
         }
       } catch (error) {
-        // Silent skip for parsing errors
+        
       }
     });
 

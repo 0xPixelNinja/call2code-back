@@ -1,16 +1,26 @@
-import express from "express";
-import cors from "cors";
 import dotenv from "dotenv";
-import { marketService } from "./services/market";
-import { schedulerService } from "./services/scheduler";
+
 
 dotenv.config();
+
+import express from "express";
+import cors from "cors";
+
+
+import farmRoutes from "./routes/farm";
+import weatherRoutes from "./routes/weather"; 
+import marketRoutes from "./routes/market";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+
+console.log('🔑 API Key loaded:', process.env.OPEN_WEATHER_KEY ? 'YES' : 'NO');
+
+
 app.use(cors());
 app.use(express.json());
+
 
 app.get("/", (req, res) => {
   res.json({
@@ -20,37 +30,19 @@ app.get("/", (req, res) => {
   });
 });
 
+
+app.use("/api/farm", farmRoutes);
+app.use("/api/weather", weatherRoutes);
+app.use("/api/market", marketRoutes);
+
+
 app.get("/api/market-prices", async (req, res) => {
-  try {
-    const marketPrices = await marketService.getLatestMarketPrices();
-    res.json(marketPrices);
-  } catch (error) {
-    console.error("Error in market prices endpoint:", error);
-    res.status(500).json({
-      success: false,
-      error: "Internal server error",
-      message: "Failed to fetch market prices",
-    });
-  }
+  res.redirect("/api/market/prices");
 });
 
-// app.post("/api/market-prices/update", async (req, res) => {
-//   try {
-//     const result = await schedulerService.triggerUpdate();
-//     res.json(result);
-//   } catch (error) {
-//     console.error("Error in manual update endpoint:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Internal server error",
-//       message: "Failed to update market prices",
-//     });
-//   }
-// });
 
 app.listen(PORT, () => {
   console.log(`🚀 FarmAssist Backend is running on port http://localhost:${PORT}`);
-  schedulerService.init();
 });
 
 export default app;
